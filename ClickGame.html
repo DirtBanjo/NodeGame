@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Gamedev Canvas Workshop</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+        canvas {
+            background: #eee;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Node JS - Circle Squares</h1>
+    <h4>Rules: Point your Mouse to the squares to eat them. Avoid players that are bigger than or you will die. Avoid the black square!</h4>
+    <h4>The bigger you get the slower you get. Press Space bar to shrink and regain speed. Press Escape to leave game and watch.</h4>
+    <h2>Score Board:</h2>
+    <h3 id="scoreBoard"></h3>
+    <br/>
+    <h2 id="playerModeHeading"></h2>
+    <canvas id="myCanvas" width="1500" height="920"></canvas>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+
+    <script>
+        var socket = io();
+        var canvas = document.getElementById("myCanvas");
+        var ctx = canvas.getContext("2d");
+        var x = canvas.width / 2;
+        var y = canvas.height - 30;
+        var myID = socket.id;
+        var dateObj = new Date();
+        var secondsObj = dateObj.getSeconds();
+        var circles = [];
+        var squares = [];
+        var enemy;
+
+        //create event listener for key down
+        document.addEventListener("keydown", keyDownHandler, false);
+
+        $(document).ready(function() {
+            $('#myCanvas').mousemove(function(e) { //when mouse moves we need to calculate the angle of approach for the circle
+                var offset = $(this).offset();
+                var x = e.pageX - offset.left;
+                var y = e.pageY - offset.top;
+                var myCircle = getMyCircle();
+                if (circles[myCircle] === undefined || circles[myCircle] === null) {} else {
+                    var directionAng = Math.atan2(y - circles[myCircle].ypos, x - circles[myCircle].xpos);
+						console.log(directionAng);
+                    socket.emit('mouseAngleChanged', directionAng);
+                }
+            })
+        });
+
+
+        //Event listeners form server 
+        //Get updated objects from server
+        socket.on('updateClient', function(serverCircles, serverSquares, serverEnemy) {
+            circles = serverCircles;
+            squares = serverSquares;
+            enemy = serverEnemy;
+            draw(); //draw the shapes on the canvas
+        });
+
+        //event when user connects
+        socket.on('UserConnected', function(obj, ID, squaresObj) {
+            if (myID == null) { //if user has not connected before i.e. the user id is null
+                circles = obj;
+                squares = squaresObj;
+                myID = ID;
+                var person = prompt("Please enter your name:", "User" + secondsObj); // ask for users name
+                if (person !== null) { //if they provide a name
+                    socket.emit('UserNameInput', ID, person);
+                    document.getElementById("playerModeHeading").innerHTML = "Playing...";
+                } else { //if the cancel leave them as a spectator
+                    document.getElementById("playerModeHeading").innerHTML = "Spectator, F5 To Rejoin Game!";
+                }
+            }
+        });
+
+
+        //Event when user is removed, set them up as a spectator
+        socket.on('RemovedUser', function(owner, players) {
+            if (owner === myID) {
+                console.log('RemovedUser ' + owner + ' ' + myID);
+                document.getElementById("playerModeHeading").innerHTML = "Spectating, F5 To Rejoin Game!";
+            }
+        });
+
+        //Key pressed handler
+        function keyDownHandler(e) {
+            if (e.keyCode == 32) //space bar
+            {
+                socket.emit('decreaseCicrleSize');
+            }
+            if (e.keyCode == 27) //escape
+            {
+                socket.emit('UserSpectating');
+            }
+			
+			if(e.keyCode == 39)//right
+			{
+			  socket.emit('mouseAngleChanged', 0);
+			}
+			
+			if(e.keyCode == 37)//left
+			{
+			  socket.emit('mouseAngleChanged', -3);
+			}
+			
+			if(e.keyCode == 38)//up
+			{
+			  socket.emit('mouseAngleChanged', -1.5);
+			}
+			
+			if(e.keyCode == 40)//down
+			{
+			  socket.emit('mouseAngleChanged', 1.5);
+			}
+        }
+
+        //Draw the user circles
+        function drawUserCircles() {
+            var userCircleColor = "red";
+            document.getElementById("scoreBoard").innerHTML = "";
+            for (var i = 0; i < circles.length; i++) {
+                ctx.beginPath();
+                ctx.arc(circles[i].xpos, circles[i].ypos, circles[i].radius, 0, Math.PI * 2);
+
+                if (circles[i].owner == myID) {
+                    ctx.fillStyle = userCircleColor;
+                } else {
+                    ctx.fillStyle = "#0095DD";
+                }
+                ctx.fill();
+                ctx.closePath();
+                ctx.font = "24px Arial";
+                ctx.fillText(circles[i].UserName, circles[i].xpos, circles[i].ypos - circles[i].radius);
+                document.getElementById("scoreBoard").innerHTML += "  " + circles[i].UserName + ": " + circles[i].score + '<br/>';
+            }
+        }
+
+        //Draw the squares
+        function drawSquares() {
+            for (var i = 0; i < squares.length; i++) {
+                ctx.beginPath();
+                ctx.lineWidth = "2";
+                ctx.strokeStyle = squares[i].color;
+                ctx.rect(squares[i].xpos, squares[i].ypos, squares[i].size, squares[i].size);
+                ctx.stroke();
+            }
+        }
+
+        //Get the users circle
+        function getMyCircle() {
+            var myCircle = 0;
+            for (var i = 0; i < circles.length; i++) {
+                if (circles[i].owner == myID) {
+                    myCircle = i;
+                }
+            }
+            return myCircle;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawSquares();
+            drawUserCircles();
+            ctx.beginPath();
+            ctx.lineWidth = "2";
+            ctx.fillStyle = "#121F1F";
+            ctx.fillRect(enemy.xpos, enemy.ypos, enemy.size, enemy.size);
+            ctx.stroke();
+        }
+    </script>
+
+</body>
+
+</html>
